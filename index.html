@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AdMiner · Painel de anúncios</title>
+<link rel="stylesheet" href="style.css">
+<script src="config.js"></script>
+</head>
+<body>
+  <!-- configuração do Supabase (só aparece se config.js estiver vazio) -->
+  <section id="setup" class="center" hidden>
+    <form id="setupForm" class="box">
+      <h1>⛏ AdMiner</h1>
+      <p class="muted">Conecte o painel ao seu projeto Supabase.<br>Supabase → Project Settings → API.</p>
+      <label>Project URL <input name="url" placeholder="https://xxxx.supabase.co" required></label>
+      <label>anon public key <input name="key" placeholder="eyJhbGciOi…" required></label>
+      <button>Salvar</button>
+      <p class="muted small">Fica salvo só neste navegador. Para não precisar preencher, coloque os dois valores em <b>config.js</b>.</p>
+    </form>
+  </section>
+
+  <!-- login -->
+  <section id="login" class="center" hidden>
+    <form id="loginForm" class="box">
+      <h1>⛏ AdMiner</h1>
+      <p class="muted">Entre com o mesmo e-mail e senha que você usa na extensão.</p>
+      <label>E-mail <input name="email" type="email" autocomplete="username" required></label>
+      <label>Senha <input name="password" type="password" autocomplete="current-password" required></label>
+      <button>Entrar</button>
+      <p id="loginErr" class="err" hidden></p>
+      <p class="muted small"><a href="#" id="resetCfg">Trocar projeto Supabase</a></p>
+    </form>
+  </section>
+
+  <!-- painel -->
+  <section id="app" hidden>
+    <header class="top">
+      <div class="brand">⛏ AdMiner <span class="sub">Painel de anúncios</span> <span id="live" class="live" title="Atualização ao vivo">●</span></div>
+      <div class="stats" id="stats"></div>
+      <div class="tools">
+        <input id="q" type="search" placeholder="Buscar por anunciante, copy ou site…">
+        <select id="sort">
+          <option value="saved">Mais recentes</option>
+          <option value="days">Mais dias rodando</option>
+          <option value="count">Mais anúncios no criativo</option>
+          <option value="adv">Anunciante com mais anúncios</option>
+          <option value="score">Maior score</option>
+        </select>
+        <button id="csv" class="ghost">Exportar CSV</button>
+        <button id="logout" class="ghost" title="Sair">Sair</button>
+      </div>
+    </header>
+
+    <div class="filterbar">
+      <span class="fl">Tipo de oferta:</span>
+      <div id="ftypes" class="chips">
+        <label class="chip"><input type="checkbox" value="low"><span>💸 Low ticket</span></label>
+        <label class="chip"><input type="checkbox" value="info"><span>🎓 Infoproduto</span></label>
+        <label class="chip"><input type="checkbox" value="phys"><span>📦 Físico / loja</span></label>
+        <label class="chip"><input type="checkbox" value="app"><span>📱 App / serviço</span></label>
+        <label class="chip"><input type="checkbox" value="unk"><span>❔ Indefinido</span></label>
+      </div>
+      <span class="muted">(nenhum marcado = todos · fica salvo)</span>
+      <div class="selbar">
+        <label class="chk"><input type="checkbox" id="selAll"> Selecionar todos visíveis</label>
+        <span id="selInfo" class="muted"></span>
+        <button id="selClear" class="ghost" hidden>Limpar seleção</button>
+        <button id="selDel" class="danger" hidden>🗑 Apagar selecionados</button>
+      </div>
+    </div>
+
+    <div id="filtinfo" class="banner info" hidden></div>
+    <div id="loading" class="empty">Carregando anúncios…</div>
+    <main id="grid" class="grid"></main>
+    <div id="more" class="more" hidden></div>
+    <div id="empty" class="empty" hidden>Nenhum anúncio salvo ainda.<br>Na Biblioteca de Anúncios, clique no 🔖 de um anúncio (ou rode a mineração automática).</div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
