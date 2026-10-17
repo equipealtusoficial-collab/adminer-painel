@@ -47,6 +47,14 @@ $("#logout").onclick = async () => { await sb.auth.signOut(); location.reload();
 
 const traduz = m => /invalid login/i.test(m) ? "E-mail ou senha incorretos." : /email not confirmed/i.test(m) ? "E-mail ainda não confirmado no Supabase." : m;
 
+// mensagens de erro mais úteis
+function explica(e) {
+  const m = String((e && (e.message || e.details)) || e);
+  if (/failed to fetch|networkerror|load failed/i.test(m)) return "a conexão foi bloqueada. Desative o bloqueador de anúncios para este site (uBlock, AdBlock, Brave Shields) e tente de novo.";
+  if (/relation .*(salvos|anunciantes).* does not exist|could not find the table/i.test(m)) return "as tabelas novas não existem. Rode o arquivo migracao-v2.1.sql no SQL Editor do Supabase.";
+  return m;
+}
+
 // ---------- dados ----------
 const TYPES = {
   low: ["💸 Low ticket", "gold"], info: ["🎓 Infoproduto", "purple"],
@@ -55,7 +63,7 @@ const TYPES = {
 const typeKey = a => (a.offerType === "info" ? (a.lowTicket === true ? "low" : "info") : a.offerType || "unk");
 
 const ADS = new Map();     // id -> anúncio
-const ADV = new Map();     // page_id -> { active_ads, counted_at }
+const ADV = new Map();     // page_id -> { ativos, counted_at }
 const nodes = new Map();   // id -> { sig, el }
 const selected = new Set();
 let VISIBLE = [], lastClicked = null, LIMIT = 60;
@@ -79,25 +87,25 @@ function fromRow(r) {
 
 async function fetchAll() {
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await sb.from("ads").select("id,data,video_path,thumb_path,saved_at")
+    const { data, error } = await sb.from("salvos").select("id,data,video_path,thumb_path,saved_at")
       .eq("deleted", false).order("saved_at", { ascending: false }).range(from, from + 999);
-    if (error) throw error;
+    if (error) throw new Error(explica(error));
     data.forEach(r => ADS.set(r.id, fromRow(r)));
     if (data.length < 1000) break;
   }
-  const { data: adv, error: e2 } = await sb.from("advertisers").select("page_id,active_ads,counted_at");
+  const { data: adv, error: e2 } = await sb.from("anunciantes").select("page_id,ativos,counted_at");
   if (!e2) adv.forEach(a => ADV.set(a.page_id, a));
 }
 
 function subscribe() {
   sb.channel("adminer")
-    .on("postgres_changes", { event: "*", schema: "public", table: "ads" }, p => {
+    .on("postgres_changes", { event: "*", schema: "public", table: "salvos" }, p => {
       if (p.eventType === "DELETE") ADS.delete(p.old.id);
       else if (p.new.deleted) ADS.delete(p.new.id);
       else ADS.set(p.new.id, fromRow(p.new));
       scheduleRender();
     })
-    .on("postgres_changes", { event: "*", schema: "public", table: "advertisers" }, p => {
+    .on("postgres_changes", { event: "*", schema: "public", table: "anunciantes" }, p => {
       if (p.new && p.new.page_id) ADV.set(p.new.page_id, p.new);
       scheduleRender();
     })
@@ -119,7 +127,7 @@ function filtered() {
   const fts = [...document.querySelectorAll("#ftypes input:checked")].map(i => i.value);
   const key = {
     saved: a => a.savedAt, days: a => daysOf(a) || 0, count: a => a.count || 0,
-    adv: a => (advOf(a) && advOf(a).active_ads) || 0, score: a => a.score || 0
+    adv: a => (advOf(a) && advOf(a).ativos) || 0, score: a => a.score || 0
   }[$("#sort").value];
   return [...ADS.values()]
     .filter(a => (!fts.length || fts.includes(typeKey(a))) &&
@@ -130,7 +138,7 @@ function filtered() {
 function cardHtml(a) {
   const [tl, tc] = TYPES[typeKey(a)];
   const d = daysOf(a), adv = advOf(a);
-  const advTxt = adv ? (adv.active_ads == null ? "não deu para contar" : num(adv.active_ads)) : (a.pageId ? "contando…" : "—");
+  const advTxt = adv ? (adv.ativos == null ? "não deu para contar" : num(adv.ativos)) : (a.pageId ? "contando…" : "—");
   const price = a.price != null ? " " + brl(a.price) : "";
   const media = a.videoUrl
     ? `<video controls preload="none" playsinline ${a.thumbUrl ? `poster="${esc(a.thumbUrl)}"` : ""} src="${esc(a.videoUrl)}"></video>`
@@ -243,8 +251,8 @@ async function removeIds(ids) {
   ids.forEach(id => { const a = ADS.get(id); if (a) { if (a.video_path) paths.push(a.video_path); if (a.thumb_path) paths.push(a.thumb_path); } });
   for (let i = 0; i < ids.length; i += 100) {
     const part = ids.slice(i, i + 100);
-    const { error } = await sb.from("ads").update({ deleted: true, video_path: null, thumb_path: null, updated_at: new Date().toISOString() }).in("id", part);
-    if (error) { toast("Erro ao apagar: " + error.message); return false; }
+    const { error } = await sb.from("salvos").update({ deleted: true, video_path: null, thumb_path: null, updated_at: new Date().toISOString() }).in("id", part);
+    if (error) { toast("Erro ao apagar: " + explica(error)); return false; }
   }
   for (let i = 0; i < paths.length; i += 100) await sb.storage.from("midia").remove(paths.slice(i, i + 100));
   ids.forEach(id => { ADS.delete(id); selected.delete(id); });
@@ -298,7 +306,7 @@ $("#ftypes").addEventListener("change", onFilter);
 
 $("#csv").onclick = () => {
   const cols = [["Anunciante", a => a.pageName], ["Tipo", a => TYPES[typeKey(a)][0]], ["Preço", a => a.price],
-    ["Dias rodando", daysOf], ["Anúncios do criativo", a => a.count], ["Anúncios ativos do anunciante", a => advOf(a) && advOf(a).active_ads],
+    ["Dias rodando", daysOf], ["Anúncios do criativo", a => a.count], ["Anúncios ativos do anunciante", a => advOf(a) && advOf(a).ativos],
     ["Ativo", a => (a.active ? "sim" : "não")], ["Página de vendas", a => a.landing], ["Domínio", a => a.domain],
     ["Anúncios do anunciante", a => a.advertiserLibraryUrl], ["Instagram", a => a.instagramUrl], ["Anúncio na Biblioteca", a => a.libraryUrl],
     ["Vídeo", a => a.videoUrl], ["Copy", a => a.copy]];
